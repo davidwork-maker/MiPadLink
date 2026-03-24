@@ -15,6 +15,11 @@ echo "[mipadlink] setting up USB port forwarding..."
 echo "[mipadlink] adb reverse tcp:9009 ok"
 
 echo "[mipadlink] starting host server..."
+echo "[mipadlink] dashboard will open at http://127.0.0.1:9010"
+
+# open dashboard in browser after a short delay
+(sleep 2 && open "http://127.0.0.1:9010") &
+
 exec node "$SCRIPT_DIR/src/cli.js" \
   --host-server \
   --host=127.0.0.1 \

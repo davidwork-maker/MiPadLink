@@ -3,6 +3,7 @@ import { decodeMessage, encodeMessage } from "./codec.js";
 import { createCloseMessage, createFrameMessage, createHeartbeatMessage, createHelloMessage } from "./protocol.js";
 import { createDisplayCaptureFrameProvider, createScreenCaptureFrameProvider, createStaticFrameProvider } from "./frame-provider.js";
 import { checkAccessibilityPermission, createVirtualDisplaySession, getCaptureBackendStatus, injectDisplayInput } from "./virtual-display-helper.js";
+import { createDashboard } from "./dashboard.js";
 
 function createLineDecoder(onLine) {
   let buffer = "";
@@ -26,7 +27,8 @@ export function createHostConnectionHandler({
   now = () => Date.now(),
   frameProvider = createStaticFrameProvider(),
   inputSink = null,
-  onInput = null
+  onInput = null,
+  onFrame = null
 }) {
   let sessionId = null;
   let seq = 0;
@@ -48,6 +50,7 @@ export function createHostConnectionHandler({
       })
     );
     seq += 1;
+    if (onFrame) onFrame(seq);
   };
 
   const sendNextFrame = () => {
@@ -249,6 +252,27 @@ export async function startHostServer({
     }
   }
 
+  // --- Dashboard ---
+  const dashboard = createDashboard({ port: 9010 });
+  let activeClients = 0;
+  let totalFramesPushed = 0;
+  let lastInputData = null;
+  try {
+    await dashboard.start();
+    dashboard.updateState({
+      host,
+      port,
+      frameIntervalMs,
+      virtualDisplay: virtualDisplaySession
+        ? { displayId: virtualDisplaySession.displayId, width: streamWidth, height: streamHeight, name: virtualDisplaySession.name }
+        : null
+    });
+    dashboard.log("Host server starting...", "ok");
+    console.log(`[padlink] dashboard: http://127.0.0.1:9010`);
+  } catch (dashError) {
+    console.warn(`[padlink] dashboard failed to start: ${dashError instanceof Error ? dashError.message : String(dashError)}`);
+  }
+
   const server = net.createServer((socket) => {
     socket.setEncoding("utf8");
     socket.setNoDelay(true);
@@ -262,19 +286,30 @@ export async function startHostServer({
         socketClosed = true;
       }
     };
+    activeClients += 1;
+    dashboard.updateState({ clients: activeClients });
+    dashboard.log(`Client connected (${activeClients} total)`, "ok");
     const handler = createHostConnectionHandler({
       send,
       width: streamWidth,
       height: streamHeight,
       frameIntervalMs,
       frameProvider,
-      onInput: logInput
-        ? (message) => {
+      onInput: (message) => {
+        lastInputData = message;
+        dashboard.updateState({ lastInput: { x: message.x, y: message.y, action: message.action } });
+        if (logInput) {
           const x = Number.isFinite(message.x) ? message.x.toFixed(3) : String(message.x);
           const y = Number.isFinite(message.y) ? message.y.toFixed(3) : String(message.y);
           console.log(`[padlink] input kind=${message.kind} action=${message.action ?? "tap"} x=${x} y=${y}`);
         }
-        : null,
+      },
+      onFrame: () => {
+        totalFramesPushed += 1;
+        if (totalFramesPushed % 10 === 0) {
+          dashboard.updateState({ totalFrames: totalFramesPushed });
+        }
+      },
       inputSink: virtualDisplaySession
         ? (message) => injectDisplayInput({
           displayId: virtualDisplaySession.displayId,
@@ -282,7 +317,6 @@ export async function startHostServer({
           y: message.y,
           action: message.action ?? "tap"
         }).catch((error) => {
-          // Surface only the compact reason to avoid noisy logs.
           const reason = error instanceof Error ? error.message : String(error);
           console.warn(`[padlink] input injection failed: ${reason}`);
         })
@@ -299,8 +333,20 @@ export async function startHostServer({
     });
 
     socket.on("data", onData);
-    socket.on("close", () => { socketClosed = true; handler.close("socket-closed"); });
-    socket.on("error", () => { socketClosed = true; handler.close("socket-error"); });
+    socket.on("close", () => {
+      socketClosed = true;
+      handler.close("socket-closed");
+      activeClients = Math.max(0, activeClients - 1);
+      dashboard.updateState({ clients: activeClients });
+      dashboard.log(`Client disconnected (${activeClients} remaining)`);
+    });
+    socket.on("error", () => {
+      socketClosed = true;
+      handler.close("socket-error");
+      activeClients = Math.max(0, activeClients - 1);
+      dashboard.updateState({ clients: activeClients });
+      dashboard.log("Client connection error", "error");
+    });
   });
 
   await new Promise((resolve, reject) => {
@@ -312,10 +358,12 @@ export async function startHostServer({
     host,
     port,
     virtualDisplay: virtualDisplaySession,
+    dashboard,
     close: () =>
       new Promise((resolve, reject) => {
         server.close(async (error) => {
           try {
+            await dashboard.close();
             if (virtualDisplaySession) {
               await virtualDisplaySession.close();
             }
