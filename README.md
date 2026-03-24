@@ -68,19 +68,15 @@ cd android-client
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### 3. Set up USB port forwarding / 建立 USB 端口转发
+### 3. Start (one command does everything) / 一键启动
 
 ```bash
-adb reverse tcp:9009 tcp:9009
+./start.sh
 ```
 
-### 4. Start the host server / 启动主机服务
+This script: checks the device, sets up `adb reverse`, and starts the host server in one step.
 
-```bash
-node ./src/cli.js --host-server --host=127.0.0.1 --port=9009 \
-  --virtual-display --display-width=1600 --display-height=900 \
-  --frame-interval-ms=100 --capture-backend=coreGraphics
-```
+> **Note:** `adb reverse` resets whenever you replug the USB cable or reinstall the APK. Always re-run `./start.sh` after reconnecting.
 
 ### 5. Connect from tablet / 平板连接
 
