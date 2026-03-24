@@ -1,0 +1,34 @@
+# Node.js
+node_modules/
+coverage/
+.cache/
+*.log
+
+# macOS helper build output
+macos-helper/build/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Android
+android-client/.gradle/
+android-client/.kotlin/
+android-client/build/
+android-client/app/build/
+android-client/local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary / debug artifacts
+*.tmp
+/tmp/
+padlink_ui.xml

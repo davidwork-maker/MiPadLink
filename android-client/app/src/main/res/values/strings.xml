@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MiPadLink</string>
+    <string name="session_label">会话：</string>
+    <string name="status_label">画面：</string>
+    <string name="session_idle">空闲</string>
+    <string name="status_waiting">等待画面</string>
+    <string name="connect_button">连接演示</string>
+    <string name="connect_tcp_button">连接 TCP</string>
+    <string name="touchpad_button">发送触控</string>
+    <string name="status_frame_format">帧=%1$d 尺寸=%2$dx%3$d</string>
+    <string name="host_hint">主机地址</string>
+    <string name="port_hint">端口</string>
+    <string name="fullscreen_enter">全屏</string>
+    <string name="fullscreen_exit">退出全屏</string>
+    <string name="render_title">MiPadLink 预览</string>
+    <string name="jpeg_frame_format">JPEG 画面 %1$dx%2$d</string>
+    <string name="decode_failed_null">解码失败：空图像</string>
+    <string name="decode_failed_invalid">解码失败：无效数据</string>
+    <string name="state_idle">空闲</string>
+    <string name="state_connecting">连接中</string>
+    <string name="state_handshaking">握手中</string>
+    <string name="state_active">已连接</string>
+    <string name="state_heartbeat">心跳</string>
+    <string name="state_closed">已关闭</string>
+    <string name="state_closed_remote">远端已关闭</string>
+    <string name="state_connect_failed">连接失败</string>
+    <string name="state_not_connected">未连接</string>
+    <string name="state_input_failed">输入发送失败</string>
+    <string name="state_streaming">推流中（帧 %1$s）</string>
+</resources>

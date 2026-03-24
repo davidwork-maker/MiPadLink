@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.MiPadLink" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#1C6B52</item>
+        <item name="colorPrimaryVariant">#0F4331</item>
+        <item name="colorOnPrimary">#F6FFFB</item>
+        <item name="android:statusBarColor" tools:targetApi="l">#0B0F12</item>
+        <item name="android:navigationBarColor">#0B0F12</item>
+    </style>
+</resources>
