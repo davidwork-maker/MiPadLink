@@ -193,6 +193,73 @@ export async function injectDisplayInput({
   return JSON.parse(stdout);
 }
 
+function killStaleHelpers() {
+  return new Promise((resolve) => {
+    execFile("pkill", ["-f", "padlink-virtual-display create"], { encoding: "utf8" }, () => {
+      setTimeout(resolve, 1500);
+    });
+  });
+}
+
+function spawnVirtualDisplay(binary, args) {
+  const child = spawn(binary, args, {
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  const metadataPromise = new Promise((resolve, reject) => {
+    const lineReader = readline.createInterface({ input: child.stdout });
+    let stderrBuffer = "";
+    const timeout = setTimeout(() => {
+      lineReader.close();
+      child.kill("SIGTERM");
+      reject(new Error("virtual display helper timed out"));
+    }, 20_000);
+
+    child.stderr.on("data", (chunk) => {
+      stderrBuffer += chunk.toString();
+    });
+
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      lineReader.close();
+      reject(error);
+    });
+
+    lineReader.once("line", (line) => {
+      clearTimeout(timeout);
+      lineReader.close();
+      try {
+        resolve(JSON.parse(line));
+      } catch (error) {
+        reject(new Error(`failed to parse helper output: ${line}\n${stderrBuffer}\n${error}`));
+      }
+    });
+
+    child.once("exit", (code) => {
+      if (code !== null && code !== 0) {
+        clearTimeout(timeout);
+        lineReader.close();
+        reject(new Error(`virtual display helper exited with code ${code}: ${stderrBuffer.trim()}`));
+      }
+    });
+  });
+
+  return { child, metadataPromise };
+}
+
+async function verifyDisplayCapture(displayId) {
+  try {
+    const helpers = await ensureVirtualDisplayHelpersBuilt();
+    const tmpFile = `/tmp/padlink-verify-${displayId}.jpg`;
+    await execFileAsync(helpers.virtualDisplay, [
+      "capture", `--display-id=${displayId}`, `--output=${tmpFile}`, "--quality=0.3"
+    ], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function createVirtualDisplaySession({
   width = 1920,
   height = 1080,
@@ -203,83 +270,83 @@ export async function createVirtualDisplaySession({
   name = `PadLink Virtual Display ${os.hostname()}`
 } = {}) {
   const binary = await ensureVirtualDisplayHelperBuilt();
-  const args = [
-    "create",
-    `--width=${width}`,
-    `--height=${height}`,
-    `--refresh=${refreshRate}`,
-    `--name=${name}`,
-    `--ppi=${ppi}`
-  ];
-  if (hiDPI) args.push("--hiDPI");
-  if (mirror) args.push("--mirror");
+  const buildArgs = () => {
+    const a = [
+      "create",
+      `--width=${width}`,
+      `--height=${height}`,
+      `--refresh=${refreshRate}`,
+      `--name=${name}`,
+      `--ppi=${ppi}`
+    ];
+    if (hiDPI) a.push("--hiDPI");
+    if (mirror) a.push("--mirror");
+    return a;
+  };
 
-  const child = spawn(binary, args, {
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-
+  // --- Attempt 1: try to create fresh ---
+  let { child, metadataPromise } = spawnVirtualDisplay(binary, buildArgs());
   let metadata;
   try {
-    metadata = await new Promise((resolve, reject) => {
-      const lineReader = readline.createInterface({ input: child.stdout });
-      let stderrBuffer = "";
-      const timeout = setTimeout(() => {
-        lineReader.close();
-        child.kill("SIGTERM");
-        reject(new Error("virtual display helper timed out"));
-      }, 20_000);
-
-      child.stderr.on("data", (chunk) => {
-        stderrBuffer += chunk.toString();
-      });
-
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        lineReader.close();
-        reject(error);
-      });
-
-      lineReader.once("line", (line) => {
-        clearTimeout(timeout);
-        lineReader.close();
-        try {
-          resolve(JSON.parse(line));
-        } catch (error) {
-          reject(new Error(`failed to parse helper output: ${line}\n${stderrBuffer}\n${error}`));
-        }
-      });
-
-      child.once("exit", (code) => {
-        if (code !== null && code !== 0) {
-          clearTimeout(timeout);
-          lineReader.close();
-          reject(new Error(`virtual display helper exited with code ${code}: ${stderrBuffer.trim()}`));
-        }
-      });
-    });
+    metadata = await metadataPromise;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.includes("create-failed:no-display")) {
       throw error;
     }
-    const displays = await listDisplays();
-    const reusable = displays.find(
-      (display) => !display.main && display.width === width && display.height === height
-    );
-    if (!reusable) {
-      throw error;
+
+    // --- Attempt 2: kill stale helpers to free display slots, then retry ---
+    console.log("[padlink] virtual display limit reached, cleaning up stale helpers...");
+    await killStaleHelpers();
+
+    try {
+      const retry = spawnVirtualDisplay(binary, buildArgs());
+      child = retry.child;
+      metadata = await retry.metadataPromise;
+    } catch (retryError) {
+      const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+      if (!retryMsg.includes("create-failed:no-display")) {
+        throw retryError;
+      }
+
+      // --- Attempt 3: auto-detect any existing non-main display ---
+      console.log("[padlink] still cannot create virtual display, auto-detecting existing displays...");
+      const displays = await listDisplays();
+      const candidates = displays.filter((d) => !d.main);
+      let reusable = null;
+
+      // prefer matching dimensions, then any non-main display
+      reusable = candidates.find((d) => d.width === width && d.height === height);
+      if (!reusable && candidates.length > 0) {
+        reusable = candidates[0];
+        console.log(`[padlink] no exact size match; using display ${reusable.displayId} (${reusable.width}x${reusable.height})`);
+      }
+
+      if (!reusable) {
+        throw retryError;
+      }
+
+      // verify the display actually responds to capture
+      const alive = await verifyDisplayCapture(reusable.displayId);
+      if (!alive) {
+        console.warn(`[padlink] display ${reusable.displayId} exists but capture failed`);
+        throw retryError;
+      }
+
+      console.log(`[padlink] reusing verified display id=${reusable.displayId}`);
+      return {
+        displayId: reusable.displayId,
+        width: reusable.width,
+        height: reusable.height,
+        refreshRate,
+        name: `Reused Display ${reusable.displayId}`,
+        reused: true,
+        close: async () => {}
+      };
     }
-    return {
-      displayId: reusable.displayId,
-      width: reusable.width,
-      height: reusable.height,
-      refreshRate,
-      name: `Reused Display ${reusable.displayId}`,
-      reused: true,
-      close: async () => {}
-    };
   }
 
+  console.log(`[padlink] created fresh virtual display id=${metadata.displayId}`);
   return {
     ...metadata,
     reused: false,
