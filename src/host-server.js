@@ -5,6 +5,24 @@ import { createDisplayCaptureFrameProvider, createScreenCaptureFrameProvider, cr
 import { checkAccessibilityPermission, createVirtualDisplaySession, getCaptureBackendStatus, injectDisplayInput } from "./virtual-display-helper.js";
 import { createDashboard } from "./dashboard.js";
 
+const CAPTURE_PRESETS = {
+  performance: { frameIntervalMs: 50, displayCaptureQuality: 0.55 },
+  balanced: { frameIntervalMs: 100, displayCaptureQuality: 0.72 },
+  battery: { frameIntervalMs: 200, displayCaptureQuality: 0.45 }
+};
+
+function normalizeCapturePreset(presetName, frameIntervalMs, displayCaptureQuality) {
+  if (presetName && CAPTURE_PRESETS[presetName]) {
+    return presetName;
+  }
+  for (const [candidate, preset] of Object.entries(CAPTURE_PRESETS)) {
+    if (preset.frameIntervalMs === frameIntervalMs && preset.displayCaptureQuality === displayCaptureQuality) {
+      return candidate;
+    }
+  }
+  return "balanced";
+}
+
 function createLineDecoder(onLine) {
   let buffer = "";
   return (chunk) => {
@@ -35,6 +53,7 @@ export function createHostConnectionHandler({
   let active = false;
   let lastInput = null;
   let timer = null;
+  let currentFrameIntervalMs = frameIntervalMs;
   let frameInFlight = false;
 
   const pushFrame = (frame) => {
@@ -50,7 +69,7 @@ export function createHostConnectionHandler({
       })
     );
     seq += 1;
-    if (onFrame) onFrame(seq);
+    if (onFrame) onFrame(frame, seq);
   };
 
   const sendNextFrame = () => {
@@ -97,7 +116,7 @@ export function createHostConnectionHandler({
     if (timer) return;
     timer = setInterval(() => {
       sendNextFrame();
-    }, frameIntervalMs);
+    }, currentFrameIntervalMs);
   };
 
   const stopFramePump = () => {
@@ -112,6 +131,20 @@ export function createHostConnectionHandler({
     }
     active = false;
     stopFramePump();
+  };
+
+  const updateFrameIntervalMs = (nextFrameIntervalMs) => {
+    if (!Number.isFinite(nextFrameIntervalMs) || nextFrameIntervalMs <= 0) {
+      return;
+    }
+    if (nextFrameIntervalMs === currentFrameIntervalMs) {
+      return;
+    }
+    currentFrameIntervalMs = nextFrameIntervalMs;
+    if (active && sessionId) {
+      stopFramePump();
+      startFramePump();
+    }
   };
 
   const onMessage = (message) => {
@@ -167,13 +200,15 @@ export function createHostConnectionHandler({
     sessionId,
     active,
     seq,
-    lastInput
+    lastInput,
+    frameIntervalMs: currentFrameIntervalMs
   });
 
   return {
     onMessage,
     close,
-    snapshot
+    snapshot,
+    updateFrameIntervalMs
   };
 }
 
@@ -185,23 +220,178 @@ export async function startHostServer({
   frameIntervalMs = 80,
   frameSource = "screen",
   virtualDisplay = false,
+  mirrorDisplay = false,
   virtualDisplayName = "PadLink Virtual Display",
   virtualDisplayHiDPI = true,
   virtualDisplayPpi = 110,
   displayCaptureQuality = 0.72,
   captureBackend = "coreGraphics",
+  capturePreset = "balanced",
   refreshRate = 60,
   logInput = false
 } = {}) {
-  const normalizedCaptureQuality = Number.isFinite(displayCaptureQuality)
+  const initialCaptureQuality = Number.isFinite(displayCaptureQuality)
     ? Math.min(1, Math.max(0.1, displayCaptureQuality))
-    : 0.72;
+    : CAPTURE_PRESETS.balanced.displayCaptureQuality;
+  const runtime = {
+    capturePreset: normalizeCapturePreset(capturePreset, frameIntervalMs, initialCaptureQuality),
+    frameIntervalMs,
+    displayCaptureQuality: initialCaptureQuality,
+    captureBackend,
+    mirrorDisplay: Boolean(mirrorDisplay)
+  };
   let virtualDisplaySession = null;
+  let virtualDisplayConfig = {
+    width,
+    height,
+    refreshRate,
+    ppi: virtualDisplayPpi,
+    hiDPI: virtualDisplayHiDPI,
+    mirror: runtime.mirrorDisplay,
+    name: virtualDisplayName
+  };
   let streamWidth = width;
   let streamHeight = height;
-  let frameProvider = frameSource === "screen"
+  const frameProviderController = {
+    current: frameSource === "screen"
     ? createScreenCaptureFrameProvider()
-    : createStaticFrameProvider();
+    : createStaticFrameProvider(),
+    nextFrame(args) {
+      return this.current.nextFrame(args);
+    }
+  };
+  const connectionHandlers = new Set();
+
+  const updateDashboardState = () => {
+    dashboard.updateState({
+      host,
+      port,
+      frameIntervalMs: runtime.frameIntervalMs,
+      displayCaptureQuality: runtime.displayCaptureQuality,
+      capturePreset: runtime.capturePreset,
+      mirrorEnabled: runtime.mirrorDisplay,
+      virtualDisplay: virtualDisplaySession
+        ? {
+          displayId: virtualDisplaySession.displayId,
+          width: streamWidth,
+          height: streamHeight,
+          name: virtualDisplaySession.name,
+          mirror: runtime.mirrorDisplay
+        }
+        : null
+    });
+  };
+
+  const refreshFrameProvider = () => {
+    if (!virtualDisplaySession) {
+      frameProviderController.current = frameSource === "screen"
+        ? createScreenCaptureFrameProvider()
+        : createStaticFrameProvider();
+      return;
+    }
+    frameProviderController.current = createDisplayCaptureFrameProvider({
+      displayId: virtualDisplaySession.displayId,
+      quality: runtime.displayCaptureQuality,
+      captureBackend: runtime.captureBackend
+    });
+  };
+
+  const applyCapturePreset = (presetName) => {
+    const preset = CAPTURE_PRESETS[presetName];
+    if (!preset) {
+      throw new Error(`unknown-capture-preset:${presetName}`);
+    }
+    runtime.capturePreset = presetName;
+    runtime.frameIntervalMs = preset.frameIntervalMs;
+    runtime.displayCaptureQuality = preset.displayCaptureQuality;
+    for (const handler of connectionHandlers) {
+      handler.updateFrameIntervalMs(runtime.frameIntervalMs);
+    }
+    refreshFrameProvider();
+    updateDashboardState();
+    dashboard.log(`Capture preset set to ${presetName} (${preset.frameIntervalMs}ms)`, "ok");
+    return { ok: true, capturePreset: presetName };
+  };
+
+  const rebuildVirtualDisplay = async ({ mirror } = {}) => {
+    if (!virtualDisplay) {
+      throw new Error("virtual-display-disabled");
+    }
+    const previousSession = virtualDisplaySession;
+    const previousConfig = virtualDisplayConfig;
+    const nextConfig = {
+      ...virtualDisplayConfig,
+      mirror: typeof mirror === "boolean" ? mirror : runtime.mirrorDisplay
+    };
+
+    if (previousSession) {
+      try {
+        await previousSession.close();
+      } catch (closeError) {
+        console.warn(`[padlink] failed to close previous virtual display: ${closeError instanceof Error ? closeError.message : String(closeError)}`);
+      }
+      virtualDisplaySession = null;
+    }
+
+    try {
+      const nextSession = await createVirtualDisplaySession(nextConfig);
+      virtualDisplaySession = nextSession;
+      virtualDisplayConfig = nextConfig;
+      streamWidth = nextSession.width ?? width;
+      streamHeight = nextSession.height ?? height;
+      runtime.mirrorDisplay = Boolean(nextConfig.mirror);
+      refreshFrameProvider();
+      updateDashboardState();
+      dashboard.log(runtime.mirrorDisplay ? "Mirror display enabled" : "Extended display enabled", "ok");
+      return {
+        ok: true,
+        virtualDisplay: {
+          displayId: nextSession.displayId,
+          width: streamWidth,
+          height: streamHeight,
+          name: nextSession.name,
+          mirror: runtime.mirrorDisplay
+        }
+      };
+    } catch (error) {
+      if (previousConfig) {
+        try {
+          const restoreSession = await createVirtualDisplaySession(previousConfig);
+          virtualDisplaySession = restoreSession;
+          virtualDisplayConfig = previousConfig;
+          streamWidth = restoreSession.width ?? width;
+          streamHeight = restoreSession.height ?? height;
+          runtime.mirrorDisplay = Boolean(previousConfig.mirror);
+          refreshFrameProvider();
+          updateDashboardState();
+          dashboard.log("Restored previous virtual display after failed switch", "error");
+        } catch (restoreError) {
+          console.warn(`[padlink] failed to restore previous virtual display: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`);
+        }
+      }
+      throw error;
+    }
+  };
+
+  const handleDashboardControl = async (payload) => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("invalid-control-payload");
+    }
+    if (payload.action === "setMirror") {
+      const nextMirror = Boolean(payload.enabled);
+      if (nextMirror === runtime.mirrorDisplay && virtualDisplaySession) {
+        return { ok: true, mirrorEnabled: runtime.mirrorDisplay };
+      }
+      return rebuildVirtualDisplay({ mirror: nextMirror });
+    }
+    if (payload.action === "setCapturePreset") {
+      return applyCapturePreset(String(payload.preset ?? ""));
+    }
+    if (payload.action === "refreshDisplay") {
+      return rebuildVirtualDisplay({ mirror: runtime.mirrorDisplay });
+    }
+    throw new Error(`unknown-control-action:${payload.action}`);
+  };
 
   if (virtualDisplay) {
     let accessibilityTrusted = true;
@@ -215,25 +405,14 @@ export async function startHostServer({
       console.warn("[padlink] Accessibility permission is not trusted. Touch injection will not work until permission is granted.");
     }
 
-    virtualDisplaySession = await createVirtualDisplaySession({
-      width,
-      height,
-      refreshRate,
-      ppi: virtualDisplayPpi,
-      hiDPI: virtualDisplayHiDPI,
-      mirror: false,
-      name: virtualDisplayName
-    });
+    virtualDisplaySession = await createVirtualDisplaySession(virtualDisplayConfig);
     if (virtualDisplaySession.reused) {
       console.warn(`[padlink] virtual display creation hit system limit; reusing existing display id=${virtualDisplaySession.displayId}.`);
     }
     streamWidth = virtualDisplaySession.width ?? width;
     streamHeight = virtualDisplaySession.height ?? height;
-    frameProvider = createDisplayCaptureFrameProvider({
-      displayId: virtualDisplaySession.displayId,
-      quality: normalizedCaptureQuality,
-      captureBackend
-    });
+    runtime.mirrorDisplay = Boolean(virtualDisplaySession.mirror ?? runtime.mirrorDisplay);
+    refreshFrameProvider();
     try {
       const backend = await getCaptureBackendStatus();
       if (captureBackend === "coreGraphics") {
@@ -253,20 +432,12 @@ export async function startHostServer({
   }
 
   // --- Dashboard ---
-  const dashboard = createDashboard({ port: 9010 });
+  const dashboard = createDashboard({ port: 9010, onControl: handleDashboardControl });
   let activeClients = 0;
   let totalFramesPushed = 0;
-  let lastInputData = null;
   try {
     await dashboard.start();
-    dashboard.updateState({
-      host,
-      port,
-      frameIntervalMs,
-      virtualDisplay: virtualDisplaySession
-        ? { displayId: virtualDisplaySession.displayId, width: streamWidth, height: streamHeight, name: virtualDisplaySession.name }
-        : null
-    });
+    updateDashboardState();
     dashboard.log("Host server starting...", "ok");
     console.log(`[padlink] dashboard: http://127.0.0.1:9010`);
   } catch (dashError) {
@@ -293,10 +464,9 @@ export async function startHostServer({
       send,
       width: streamWidth,
       height: streamHeight,
-      frameIntervalMs,
-      frameProvider,
+      frameIntervalMs: runtime.frameIntervalMs,
+      frameProvider: frameProviderController,
       onInput: (message) => {
-        lastInputData = message;
         dashboard.updateState({ lastInput: { x: message.x, y: message.y, action: message.action } });
         if (logInput) {
           const x = Number.isFinite(message.x) ? message.x.toFixed(3) : String(message.x);
@@ -304,8 +474,11 @@ export async function startHostServer({
           console.log(`[padlink] input kind=${message.kind} action=${message.action ?? "tap"} x=${x} y=${y}`);
         }
       },
-      onFrame: () => {
+      onFrame: (frame) => {
         totalFramesPushed += 1;
+        if (frame?.payloadFormat === "jpeg-base64" && totalFramesPushed % 5 === 0) {
+          dashboard.preview(frame.payload);
+        }
         if (totalFramesPushed % 10 === 0) {
           dashboard.updateState({ totalFrames: totalFramesPushed });
         }
@@ -322,6 +495,7 @@ export async function startHostServer({
         })
         : null
     });
+    connectionHandlers.add(handler);
     const onData = createLineDecoder((line) => {
       try {
         const message = decodeMessage(line);
@@ -336,6 +510,7 @@ export async function startHostServer({
     socket.on("close", () => {
       socketClosed = true;
       handler.close("socket-closed");
+      connectionHandlers.delete(handler);
       activeClients = Math.max(0, activeClients - 1);
       dashboard.updateState({ clients: activeClients });
       dashboard.log(`Client disconnected (${activeClients} remaining)`);
@@ -343,6 +518,7 @@ export async function startHostServer({
     socket.on("error", () => {
       socketClosed = true;
       handler.close("socket-error");
+      connectionHandlers.delete(handler);
       activeClients = Math.max(0, activeClients - 1);
       dashboard.updateState({ clients: activeClients });
       dashboard.log("Client connection error", "error");

@@ -32,6 +32,7 @@ function parseArgs(argv) {
     frameSource: frameSourceArg ? frameSourceArg.slice("--frame-source=".length) : "screen",
     frameIntervalMs: frameIntervalArg ? Number(frameIntervalArg.slice("--frame-interval-ms=".length)) : 80,
     virtualDisplay: flags.has("--virtual-display"),
+    mirrorDisplay: flags.has("--mirror-display"),
     logInput: flags.has("--log-input"),
     displayWidth: displayWidthArg ? Number(displayWidthArg.slice("--display-width=".length)) : 1600,
     displayHeight: displayHeightArg ? Number(displayHeightArg.slice("--display-height=".length)) : 900,
@@ -47,7 +48,7 @@ async function main() {
   if (args.help) {
     console.log(
       "Usage: padlink [--json] [--demo-session] [--tcp-demo] [--host-server] [--host=0.0.0.0] [--port=9009] [--frame-source=screen|mock] [--frame-interval-ms=80]"
-      + " [--virtual-display] [--display-width=1600] [--display-height=900] [--display-name=PadLink Virtual Display] [--refresh-rate=60] [--jpeg-quality=0.72] [--capture-backend=coreGraphics|screenCaptureKit|auto] [--log-input]"
+      + " [--virtual-display] [--mirror-display] [--display-width=1600] [--display-height=900] [--display-name=PadLink Virtual Display] [--refresh-rate=60] [--jpeg-quality=0.72] [--capture-backend=coreGraphics|screenCaptureKit|auto] [--log-input]"
     );
     process.exit(0);
   }
@@ -70,6 +71,7 @@ async function main() {
       frameSource: args.frameSource,
       frameIntervalMs: args.frameIntervalMs,
       virtualDisplay: args.virtualDisplay,
+      mirrorDisplay: args.mirrorDisplay,
       width: args.displayWidth,
       height: args.displayHeight,
       virtualDisplayName: args.displayName,

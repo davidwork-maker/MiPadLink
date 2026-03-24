@@ -7,8 +7,27 @@ PORT=9009
 DASH_PORT=9010
 
 # --- Frame rate presets ---
-# Usage: ./start.sh [performance|balanced|battery]
-PRESET="${1:-balanced}"
+# Usage: ./start.sh [performance|balanced|battery] [mirror]
+PRESET="balanced"
+MIRROR_MODE=0
+MIRROR_FLAG=""
+for ARG in "$@"; do
+  case "$ARG" in
+    performance|p|1)
+      PRESET="performance"
+      ;;
+    balanced|b|2)
+      PRESET="balanced"
+      ;;
+    battery|3)
+      PRESET="battery"
+      ;;
+    mirror|--mirror)
+      MIRROR_MODE=1
+      ;;
+  esac
+done
+
 case "$PRESET" in
   performance|p|1)
     FRAME_INTERVAL=50
@@ -27,6 +46,11 @@ case "$PRESET" in
     echo "[mipadlink] preset: BALANCED (100ms, quality 0.72)"
     ;;
 esac
+
+if [[ "$MIRROR_MODE" -eq 1 ]]; then
+  echo "[mipadlink] initial mode: MIRROR DISPLAY"
+  MIRROR_FLAG="--mirror-display"
+fi
 
 # --- Kill existing server ---
 OLD_PIDS=$(lsof -ti :$PORT -ti :$DASH_PORT 2>/dev/null | sort -u)
@@ -60,6 +84,7 @@ exec node "$SCRIPT_DIR/src/cli.js" \
   --host=127.0.0.1 \
   --port=$PORT \
   --virtual-display \
+  $MIRROR_FLAG \
   --display-width=1600 \
   --display-height=900 \
   --frame-interval-ms=$FRAME_INTERVAL \

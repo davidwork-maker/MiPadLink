@@ -74,9 +74,22 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ./start.sh
 ```
 
-This script: checks the device, sets up `adb reverse`, and starts the host server in one step.
+This script: checks the device, sets up `adb reverse`, starts the host server, and opens the browser dashboard.
+
+Dashboard controls:
+- Mirror / 扩展屏切换
+- Capture speed presets / 采集速度三档：性能、平衡、省电
+- Rebuild virtual display / 重建虚拟屏
+
+You can also start in mirror mode:
+
+```bash
+./start.sh balanced mirror
+```
 
 > **Note:** `adb reverse` resets whenever you replug the USB cable or reinstall the APK. Always re-run `./start.sh` after reconnecting.
+
+If something still looks wrong, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 ### 5. Connect from tablet / 平板连接
 

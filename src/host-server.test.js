@@ -62,3 +62,29 @@ test("host connection handler captures latest input", () => {
   assert.equal(inputs.length, 1);
   handler.close("done");
 });
+
+test("host connection handler updates frame interval at runtime", () => {
+  const sent = [];
+  const frames = [];
+  const handler = createHostConnectionHandler({
+    send: (message) => sent.push(message),
+    frameIntervalMs: 120,
+    onFrame: (frame, seq) => frames.push({ frame, seq })
+  });
+
+  assert.equal(handler.snapshot().frameIntervalMs, 120);
+
+  handler.onMessage({
+    type: "hello",
+    sessionId: "s3",
+    role: "client",
+    capabilities: {}
+  });
+
+  assert.ok(sent.some((message) => message.type === "frame"));
+  assert.ok(frames.length > 0);
+
+  handler.updateFrameIntervalMs(60);
+  assert.equal(handler.snapshot().frameIntervalMs, 60);
+  handler.close("done");
+});

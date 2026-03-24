@@ -171,11 +171,7 @@ class RenderSurfaceView @JvmOverloads constructor(
         val topOffset = if (hudVisible) 90f else 0f
         val targetWidth = width.toFloat()
         val targetHeight = (height - topOffset).coerceAtLeast(1f)
-        val scale = if (hudVisible) {
-            minOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
-        } else {
-            maxOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
-        }
+        val scale = minOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
         val drawWidth = sourceWidth * scale
         val drawHeight = sourceHeight * scale
         val left = (targetWidth - drawWidth) / 2f

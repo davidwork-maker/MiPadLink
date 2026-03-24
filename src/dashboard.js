@@ -1,5 +1,4 @@
 import http from "node:http";
-import { EventEmitter } from "node:events";
 
 const DASHBOARD_HTML = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -70,6 +69,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     transition: opacity 0.2s;
   }
   .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.active { outline: 2px solid #fbbf24; box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.35); }
   .btn.primary { background: #3b82f6; color: #fff; }
   .btn.danger { background: #ef4444; color: #fff; }
   .btn.secondary { background: #334155; color: #e0e0e0; }
@@ -101,6 +102,22 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     <div class="stat"><div class="label">Display ID</div><div class="value" id="displayId">-</div></div>
     <div class="stat"><div class="label">分辨率</div><div class="value" id="displayRes">-</div></div>
     <div class="stat"><div class="label">帧率设置</div><div class="value" id="frameInterval">-</div></div>
+  </div>
+
+  <div class="card">
+    <h2>控制 / Controls</h2>
+    <div class="stat"><div class="label">显示模式</div><div class="value" id="displayMode">-</div></div>
+    <div class="actions">
+      <button class="btn secondary" id="extendModeBtn" type="button">扩展屏</button>
+      <button class="btn secondary" id="mirrorModeBtn" type="button">镜像显示</button>
+      <button class="btn danger" id="refreshDisplayBtn" type="button">重建虚拟屏</button>
+    </div>
+    <div class="stat" style="margin-top: 10px"><div class="label">采集速度</div><div class="value" id="capturePresetLabel">-</div></div>
+    <div class="actions">
+      <button class="btn secondary" data-preset="performance" type="button">性能</button>
+      <button class="btn secondary" data-preset="balanced" type="button">平衡</button>
+      <button class="btn secondary" data-preset="battery" type="button">省电</button>
+    </div>
   </div>
 
   <div class="card">
@@ -138,6 +155,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <script>
 const $ = id => document.getElementById(id);
 let eventSource;
+let controlBusy = false;
+
+const CAPTURE_PRESET_LABELS = {
+  performance: "性能",
+  balanced: "平衡",
+  battery: "省电"
+};
 
 function formatUptime(ms) {
   const s = Math.floor(ms / 1000);
@@ -156,6 +180,76 @@ function addLog(text, type) {
   box.appendChild(entry);
   if (box.children.length > 200) box.removeChild(box.firstChild);
   box.scrollTop = box.scrollHeight;
+}
+
+function setControlDisabled(disabled) {
+  const buttons = [
+    $('extendModeBtn'),
+    $('mirrorModeBtn'),
+    $('refreshDisplayBtn'),
+    ...document.querySelectorAll('[data-preset]')
+  ];
+  buttons.forEach((button) => {
+    if (button) button.disabled = disabled;
+  });
+}
+
+function renderControlState(data) {
+  const mirrorEnabled = Boolean(data.mirrorEnabled);
+  const capturePreset = data.capturePreset || 'balanced';
+  $('displayMode').textContent = data.virtualDisplay ? (mirrorEnabled ? '镜像显示' : '扩展屏') : '未启用';
+  $('capturePresetLabel').textContent = (CAPTURE_PRESET_LABELS[capturePreset] || capturePreset) + ' · ' + (data.frameIntervalMs ?? '-') + ' ms';
+  $('extendModeBtn').classList.toggle('active', !mirrorEnabled);
+  $('mirrorModeBtn').classList.toggle('active', mirrorEnabled);
+  document.querySelectorAll('[data-preset]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.preset === capturePreset);
+  });
+  setControlDisabled(controlBusy || !data.virtualDisplay);
+}
+
+async function postControl(payload) {
+  const response = await fetch('/api/control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok === false) {
+    throw new Error(result.error || 'control-request-failed:' + response.status);
+  }
+  return result;
+}
+
+async function runControl(action, payload) {
+  if (controlBusy) return;
+  controlBusy = true;
+  setControlDisabled(true);
+  try {
+    const result = await postControl({ action, ...payload });
+    if (action === 'setMirror') {
+      addLog(payload.enabled ? '切换到镜像显示' : '切换到扩展屏', 'ok');
+    } else if (action === 'setCapturePreset') {
+      addLog('采集速度切换到 ' + (CAPTURE_PRESET_LABELS[payload.preset] || payload.preset), 'ok');
+    } else if (action === 'refreshDisplay') {
+      addLog('虚拟显示器已重建', 'ok');
+    }
+    return result;
+  } catch (error) {
+    addLog(error instanceof Error ? error.message : String(error), 'err');
+    throw error;
+  } finally {
+    controlBusy = false;
+    setControlDisabled(false);
+  }
+}
+
+function bindControls() {
+  $('extendModeBtn').addEventListener('click', () => runControl('setMirror', { enabled: false }));
+  $('mirrorModeBtn').addEventListener('click', () => runControl('setMirror', { enabled: true }));
+  $('refreshDisplayBtn').addEventListener('click', () => runControl('refreshDisplay', {}));
+  document.querySelectorAll('[data-preset]').forEach((button) => {
+    button.addEventListener('click', () => runControl('setCapturePreset', { preset: button.dataset.preset }));
+  });
 }
 
 function connect() {
@@ -178,8 +272,12 @@ function connect() {
       if (data.virtualDisplay) {
         $('displayId').textContent = data.virtualDisplay.displayId;
         $('displayRes').textContent = data.virtualDisplay.width + ' × ' + data.virtualDisplay.height;
+      } else {
+        $('displayId').textContent = '-';
+        $('displayRes').textContent = '-';
       }
       $('frameInterval').textContent = data.frameIntervalMs + ' ms';
+      renderControlState(data);
       if (data.clients > 0) {
         $('clientStatus').textContent = data.clients + ' 个客户端已连接';
         $('clientStatus').className = 'value green';
@@ -211,14 +309,14 @@ function connect() {
   });
 }
 
+bindControls();
 connect();
 addLog('Dashboard loaded');
 </script>
 </body>
 </html>`;
 
-export function createDashboard({ port = 9010 } = {}) {
-  const emitter = new EventEmitter();
+export function createDashboard({ port = 9010, onControl = null } = {}) {
   const clients = new Set();
   let state = {
     host: "127.0.0.1",
@@ -226,6 +324,9 @@ export function createDashboard({ port = 9010 } = {}) {
     startTime: Date.now(),
     virtualDisplay: null,
     frameIntervalMs: 100,
+    displayCaptureQuality: 0.72,
+    capturePreset: "balanced",
+    mirrorEnabled: false,
     clients: 0,
     totalFrames: 0,
     lastInput: null
@@ -256,6 +357,44 @@ export function createDashboard({ port = 9010 } = {}) {
   }
 
   const server = http.createServer((req, res) => {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
+      });
+      res.end();
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/control") {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", async () => {
+        try {
+          if (typeof onControl !== "function") {
+            throw new Error("controls-unavailable");
+          }
+          const payload = body ? JSON.parse(body) : {};
+          const result = await onControl(payload);
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          });
+          res.end(JSON.stringify({ ok: true, ...(result && typeof result === "object" ? result : {}) }));
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          });
+          res.end(JSON.stringify({ ok: false, error: reason }));
+        }
+      });
+      return;
+    }
+
     if (req.url === "/events") {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
