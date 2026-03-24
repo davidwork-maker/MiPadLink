@@ -7,11 +7,14 @@
 # If JAVA_HOME or ANDROID_HOME are already set in your shell, this script
 # will use those values as defaults.
 
-export JAVA_HOME="${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}"
-export ANDROID_SDK_ROOT="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+PADLINK_TOOLS_ROOT="${PADLINK_TOOLS_ROOT:-/Users/davidwork/.local/padlink-tools}"
+PADLINK_ANDROID_SDK="${PADLINK_ANDROID_SDK:-/Users/davidwork/.local/android-sdk}"
+
+export JAVA_HOME="${JAVA_HOME:-$PADLINK_TOOLS_ROOT/jdk-17.0.18+8/Contents/Home}"
+export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$PADLINK_ANDROID_SDK}"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
 
-export PATH="$JAVA_HOME/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+export PATH="$JAVA_HOME/bin:$PADLINK_TOOLS_ROOT/gradle-8.10.2/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
 
 echo "JAVA_HOME=$JAVA_HOME"
 echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
