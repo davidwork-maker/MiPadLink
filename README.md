@@ -1,200 +1,177 @@
 # MiPadLink
 
-**Turn your Android tablet into a wired extended display for macOS — over USB, no Wi-Fi needed.**
+[中文说明](README.zh-CN.md) | **English**
 
-**把你的安卓平板变成 Mac 的 USB 有线扩展屏 — 无需 Wi-Fi。**
+Turn an Android tablet into a wired macOS extended display over USB.
+
+MiPadLink creates a real macOS virtual display, streams frames to an Android tablet through `adb reverse`, and sends touch input back to the Mac. The current implementation is optimized around Apple Silicon Macs and Android 10+ tablets, with Xiaomi Pad 7 as the main validation device.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS-blue" alt="macOS" />
-  <img src="https://img.shields.io/badge/client-Android%2010%2B-green" alt="Android 10+" />
-  <img src="https://img.shields.io/badge/license-MIT-orange" alt="MIT" />
+  <img src="https://img.shields.io/badge/macOS-13%2B-111827?style=flat-square" alt="macOS 13+" />
+  <img src="https://img.shields.io/badge/Android-10%2B-166534?style=flat-square" alt="Android 10+" />
+  <img src="https://img.shields.io/badge/Connection-USB%20wired-1d4ed8?style=flat-square" alt="USB wired" />
+  <img src="https://img.shields.io/badge/License-MIT-b45309?style=flat-square" alt="MIT" />
 </p>
 
----
+## Screenshots
 
-## Features / 功能
+### Android client UI
 
-- **USB wired connection** — low latency, no network dependency / USB 有线连接，低延迟，不依赖网络
-- **Virtual display** — creates a real macOS extended desktop on your tablet / 在平板上创建真实的 macOS 扩展桌面
-- **Touch input** — tap and drag on tablet to control the extended display / 在平板上触控操作扩展屏
-- **Works on any Android tablet** — tested on Xiaomi Pad 7, should work on Samsung, Lenovo, etc. / 适用于任何安卓平板
-- **No root required** — standard ADB + TCP, no system modification needed / 无需 root
+![MiPadLink Android client](docs/assets/pad-ui-cn.png)
 
-## How It Works / 工作原理
+### Fit mode on Xiaomi Pad 7
 
+`Fit` mode keeps the full macOS frame visible and avoids side cropping on 3:2 tablets.
+
+![MiPadLink fit mode preview](docs/assets/pad-preview-fit.png)
+
+## What This Project Does
+
+- Creates a real macOS virtual display instead of a fake mirrored video window
+- Uses a USB-first workflow through `adb reverse`
+- Streams preview frames to Android over TCP localhost
+- Sends touch input back to macOS
+- Includes a local dashboard for display mode switching, capture presets, and quick diagnostics
+
+## Current Status
+
+MiPadLink is already usable for experimentation, demos, and light productivity, but it is still an engineering prototype rather than a polished end-user product.
+
+What works well right now:
+
+- Wired host startup with `./start.sh`
+- macOS dashboard at `http://127.0.0.1:9010`
+- Extended display and mirror switching
+- Android fullscreen preview
+- `Fit` mode for tablets with a different aspect ratio than the Mac virtual display
+
+Known limitations:
+
+- The transport is still JPEG-based, so latency and CPU usage can be improved further
+- Compatibility should be described as “many Android tablets”, not literally every tablet
+- Touch, scaling, and OEM background behavior may still vary by device brand and ROM
+
+## Architecture
+
+```text
+macOS host
+  -> creates a virtual display
+  -> captures display frames
+  -> serves frames on TCP localhost:9009
+  -> injects pointer/touch input
+
+USB cable + adb reverse
+  -> forwards tablet localhost:9009 to Mac localhost:9009
+
+Android client
+  -> connects to 127.0.0.1:9009
+  -> decodes JPEG frames
+  -> renders preview/fullscreen
+  -> sends touch coordinates back to macOS
 ```
-┌─────────────┐    USB + adb reverse    ┌─────────────────┐
-│   macOS     │◄────────────────────────►│  Android Tablet │
-│  Host Node  │   TCP localhost:9009     │   MiPadLink App │
-│  + Virtual  │ ──── JPEG frames ──────► │   renders frame │
-│   Display   │ ◄─── touch events ────── │   sends touch   │
-└─────────────┘                          └─────────────────┘
-```
 
-1. Mac creates a virtual display and captures its content (CoreGraphics)
-2. Frames are JPEG-encoded and streamed to the tablet over USB (via `adb reverse`)
-3. Tablet renders frames and sends touch coordinates back to Mac
-4. Mac injects touch/mouse input into the virtual display
+## Quick Start
 
-## Prerequisites / 环境要求
+### 1. Requirements
 
-### Mac (Host)
-- **macOS 13+** (Ventura or later)
-- **Node.js 18+** (`node --version`)
-- **Xcode Command Line Tools** (`xcode-select --install`)
+Mac host:
 
-### Android Tablet (Client)
-- **Android 10+** (API 29+)
-- **USB debugging enabled** (Settings → Developer Options → USB Debugging)
-- **JDK 17 + Android SDK** (for building the APK)
+- macOS 13+
+- Node.js 18+
+- Xcode Command Line Tools
 
-## Quick Start / 快速开始
+Android tablet:
 
-### 1. Build the macOS helper / 编译 macOS 原生组件
+- Android 10+
+- USB debugging enabled
+
+### 2. Build the native helper
 
 ```bash
-cd MiPadLink
 ./scripts/build-macos-helper.sh
 ```
 
-### 2. Build & install the Android app / 编译安装安卓客户端
+### 3. Build and install the Android client
 
 ```bash
-# Connect tablet via USB, then:
-adb devices                    # verify tablet is listed
-
 cd android-client
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### 3. Start (one command does everything) / 一键启动
+### 4. Start everything
 
 ```bash
 ./start.sh
 ```
 
-This script: checks the device, sets up `adb reverse`, starts the host server, and opens the browser dashboard.
+What `./start.sh` does:
 
-Dashboard URL: [http://127.0.0.1:9010](http://127.0.0.1:9010)
+- locates or downloads `adb`
+- runs `adb reverse tcp:9009 tcp:9009`
+- starts the host server
+- opens the dashboard in the browser
 
-Dashboard controls:
-- Mirror / 扩展屏切换
-- Capture speed presets / 采集速度三档：性能、平衡、省电
-- Rebuild virtual display / 重建虚拟屏
-
-You can also start in mirror mode:
+Useful variants:
 
 ```bash
+./start.sh
+./start.sh performance
 ./start.sh balanced mirror
+npm run start:pad
 ```
 
-> **Note:** `adb reverse` resets whenever you replug the USB cable or reinstall the APK. Always re-run `./start.sh` after reconnecting.
+Dashboard:
 
-If something still looks wrong, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
+- URL: [http://127.0.0.1:9010](http://127.0.0.1:9010)
+- Controls:
+  - Extended / mirrored display switching
+  - Capture presets
+  - Virtual display rebuild
 
-### 5. Connect from tablet / 平板连接
+### 5. Connect from the tablet
 
-1. Open **MiPadLink** app on tablet
-2. Host: `127.0.0.1`, Port: `9009`
-3. Tap **连接 TCP**
-4. Tap **完整显示** to avoid cropping on 3:2 tablet screens, or switch to **铺满裁切** if you prefer edge-to-edge fill
-5. Double-tap the preview area to enter fullscreen
+In the Android app:
 
-> **First run on macOS:** grant **Screen Recording** and **Accessibility** permissions to your terminal app in System Settings → Privacy & Security, then restart the host server.
+1. Host: `127.0.0.1`
+2. Port: `9009`
+3. Tap `连接 TCP`
+4. Use `完整显示 / Fit` if you want the whole desktop visible
+5. Use `铺满裁切 / Fill` if you prefer edge-to-edge rendering
 
-## Configuration / 配置选项
+## Repository Guide
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--host` | `0.0.0.0` | Bind address |
-| `--port` | `9009` | TCP port |
-| `--virtual-display` | off | Create a macOS virtual display |
-| `--display-width` | `1600` | Virtual display width |
-| `--display-height` | `900` | Virtual display height |
-| `--frame-interval-ms` | `80` | Frame push interval (ms) |
-| `--jpeg-quality` | `0.72` | JPEG quality (0.0–1.0) |
-| `--capture-backend` | `systemScreencapture` | `systemScreencapture`, `coreGraphics`, `screenCaptureKit`, or `auto` |
-| `--frame-source` | `screen` | `screen`, `mock`, or auto |
-| `--log-input` | off | Log touch input events |
+- [README.zh-CN.md](README.zh-CN.md): Chinese repository overview
+- [docs/device-setup.md](docs/device-setup.md): setup details
+- [docs/troubleshooting.md](docs/troubleshooting.md): common problems
+- [docs/release-notes.en.md](docs/release-notes.en.md): English release notes draft
+- [docs/release-notes.zh-CN.md](docs/release-notes.zh-CN.md): 中文发布说明草稿
 
-### Tuning tips / 调优建议
+## Compatibility
 
-```bash
-# Lower latency (more CPU, lower quality)
---frame-interval-ms=50 --jpeg-quality=0.5
+Validated directly:
 
-# Balanced
---frame-interval-ms=100 --jpeg-quality=0.72
+- Xiaomi Pad 7
+- macOS on Apple Silicon
 
-# Battery saver
---frame-interval-ms=200 --jpeg-quality=0.45
-```
+Expected to work with adaptation:
 
-## Project Structure / 项目结构
+- many Android 10+ tablets from Samsung, Lenovo, Huawei, OPPO, vivo, and similar vendors
 
-```
-MiPadLink/
-├── src/                    # Node.js host server
-│   ├── cli.js              # CLI entry point
-│   ├── host-server.js      # TCP server + frame pump
-│   ├── frame-provider.js   # Screen capture frame providers
-│   ├── virtual-display-helper.js  # macOS virtual display management
-│   ├── session.js          # Display session state machine
-│   ├── protocol.js         # Message protocol definitions
-│   └── *.test.js           # Unit tests
-├── macos-helper/           # Native macOS helpers (Obj-C++ / Swift)
-│   ├── padlink_virtual_display.mm  # Virtual display + CoreGraphics capture
-│   └── padlink_sc_capture.swift    # ScreenCaptureKit capture (optional)
-├── android-client/         # Android tablet client
-│   └── app/src/main/java/com/padlink/client/
-│       ├── MainActivity.kt             # Main UI
-│       ├── runtime/PadClientController.kt   # Session controller
-│       ├── runtime/PadClientTcpTransport.kt # TCP transport
-│       ├── runtime/BridgeMessage.kt         # Protocol messages
-│       └── ui/RenderSurfaceView.kt          # Frame renderer
-├── scripts/                # Build scripts
-└── docs/                   # Additional documentation
-```
+Not guaranteed:
 
-## Running Tests / 运行测试
+- every Android tablet
+- every vendor ROM
+- every screen ratio without extra tuning
 
-```bash
-npm test
-```
+## Roadmap
 
-## Compatibility / 兼容性
+- Hardware-accelerated H.264/HEVC streaming
+- Better latency profiling
+- More robust reconnect handling after USB replug
+- Better multi-device compatibility presets
+- Prebuilt Android APK releases
 
-| Device | Status |
-|--------|--------|
-| Xiaomi Pad 7 | ✅ Tested |
-| Other Android 10+ tablets | ✅ Should work |
-| macOS 13+ (Apple Silicon) | ✅ Tested |
-| macOS 13+ (Intel) | ⚠️ Untested, should work |
-
-## Roadmap / 路线图
-
-- [ ] Hardware-accelerated video encoding (H.264/HEVC) to replace JPEG
-- [ ] Multi-touch gesture forwarding
-- [ ] Auto-reconnection on USB re-plug
-- [ ] Adaptive frame rate based on network throughput
-- [ ] Pre-built APK releases
-
-## Contributing / 贡献
-
-Contributions are welcome! Please open an issue first to discuss what you'd like to change.
-
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License / 许可
+## License
 
 [MIT](LICENSE)
-
-## Acknowledgments / 致谢
-
-- Apple CoreGraphics & ScreenCaptureKit APIs
-- Android Jetpack libraries
