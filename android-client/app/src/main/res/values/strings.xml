@@ -11,6 +11,8 @@
     <string name="status_frame_format">帧=%1$d 尺寸=%2$dx%3$d</string>
     <string name="host_hint">主机地址</string>
     <string name="port_hint">端口</string>
+    <string name="scale_mode_fit">完整显示</string>
+    <string name="scale_mode_fill">铺满裁切</string>
     <string name="fullscreen_enter">全屏</string>
     <string name="fullscreen_exit">退出全屏</string>
     <string name="render_title">MiPadLink 预览</string>

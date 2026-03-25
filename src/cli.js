@@ -16,10 +16,10 @@ function parseArgs(argv) {
   const refreshRateArg = argv.find((value) => value.startsWith("--refresh-rate="));
   const jpegQualityArg = argv.find((value) => value.startsWith("--jpeg-quality="));
   const captureBackendArg = argv.find((value) => value.startsWith("--capture-backend="));
-  const backendValue = captureBackendArg ? captureBackendArg.slice("--capture-backend=".length) : "coreGraphics";
-  const captureBackend = ["auto", "screenCaptureKit", "coreGraphics"].includes(backendValue)
+  const backendValue = captureBackendArg ? captureBackendArg.slice("--capture-backend=".length) : "systemScreencapture";
+  const captureBackend = ["auto", "systemScreencapture", "screenCaptureKit", "coreGraphics"].includes(backendValue)
     ? backendValue
-    : "coreGraphics";
+    : "systemScreencapture";
 
   return {
     json: flags.has("--json"),
@@ -48,7 +48,7 @@ async function main() {
   if (args.help) {
     console.log(
       "Usage: padlink [--json] [--demo-session] [--tcp-demo] [--host-server] [--host=0.0.0.0] [--port=9009] [--frame-source=screen|mock] [--frame-interval-ms=80]"
-      + " [--virtual-display] [--mirror-display] [--display-width=1600] [--display-height=900] [--display-name=PadLink Virtual Display] [--refresh-rate=60] [--jpeg-quality=0.72] [--capture-backend=coreGraphics|screenCaptureKit|auto] [--log-input]"
+      + " [--virtual-display] [--mirror-display] [--display-width=1600] [--display-height=900] [--display-name=PadLink Virtual Display] [--refresh-rate=60] [--jpeg-quality=0.72] [--capture-backend=systemScreencapture|coreGraphics|screenCaptureKit|auto] [--log-input]"
     );
     process.exit(0);
   }

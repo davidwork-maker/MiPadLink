@@ -76,6 +76,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 This script: checks the device, sets up `adb reverse`, starts the host server, and opens the browser dashboard.
 
+Dashboard URL: [http://127.0.0.1:9010](http://127.0.0.1:9010)
+
 Dashboard controls:
 - Mirror / 扩展屏切换
 - Capture speed presets / 采集速度三档：性能、平衡、省电
@@ -96,7 +98,8 @@ If something still looks wrong, see [`docs/troubleshooting.md`](docs/troubleshoo
 1. Open **MiPadLink** app on tablet
 2. Host: `127.0.0.1`, Port: `9009`
 3. Tap **连接 TCP**
-4. Double-tap the preview area to enter fullscreen
+4. Tap **完整显示** to avoid cropping on 3:2 tablet screens, or switch to **铺满裁切** if you prefer edge-to-edge fill
+5. Double-tap the preview area to enter fullscreen
 
 > **First run on macOS:** grant **Screen Recording** and **Accessibility** permissions to your terminal app in System Settings → Privacy & Security, then restart the host server.
 
@@ -107,11 +110,11 @@ If something still looks wrong, see [`docs/troubleshooting.md`](docs/troubleshoo
 | `--host` | `0.0.0.0` | Bind address |
 | `--port` | `9009` | TCP port |
 | `--virtual-display` | off | Create a macOS virtual display |
-| `--display-width` | `1920` | Virtual display width |
-| `--display-height` | `1080` | Virtual display height |
-| `--frame-interval-ms` | `100` | Frame push interval (ms) |
+| `--display-width` | `1600` | Virtual display width |
+| `--display-height` | `900` | Virtual display height |
+| `--frame-interval-ms` | `80` | Frame push interval (ms) |
 | `--jpeg-quality` | `0.72` | JPEG quality (0.0–1.0) |
-| `--capture-backend` | `coreGraphics` | `coreGraphics` or `screenCaptureKit` |
+| `--capture-backend` | `systemScreencapture` | `systemScreencapture`, `coreGraphics`, `screenCaptureKit`, or `auto` |
 | `--frame-source` | `screen` | `screen`, `mock`, or auto |
 | `--log-input` | off | Log touch input events |
 

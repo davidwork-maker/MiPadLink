@@ -12,6 +12,7 @@ import com.padlink.client.databinding.ActivityMainBinding
 import com.padlink.client.runtime.PadClientController
 import com.padlink.client.runtime.PadClientTransport
 import com.padlink.client.runtime.PadClientTransports
+import com.padlink.client.ui.RenderSurfaceView
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -36,8 +37,18 @@ class MainActivity : AppCompatActivity() {
         )
         binding.hostInput.setText("127.0.0.1")
         binding.portInput.setText("9009")
+        binding.renderSurface.setScaleMode(RenderSurfaceView.ScaleMode.FIT)
+        updateScaleModeLabel()
         binding.fullscreenButton.setOnClickListener {
             applyFullscreenUi(!isFullscreen)
+        }
+        binding.scaleModeButton.setOnClickListener {
+            val nextMode = when (binding.renderSurface.getScaleMode()) {
+                RenderSurfaceView.ScaleMode.FIT -> RenderSurfaceView.ScaleMode.FILL
+                RenderSurfaceView.ScaleMode.FILL -> RenderSurfaceView.ScaleMode.FIT
+            }
+            binding.renderSurface.setScaleMode(nextMode)
+            updateScaleModeLabel()
         }
 
         binding.connectButton.setOnClickListener {
@@ -172,6 +183,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusValue,
             binding.hostInput,
             binding.portInput,
+            binding.scaleModeButton,
             binding.connectButton,
             binding.connectTcpButton,
             binding.touchpadButton
@@ -263,5 +275,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun updateScaleModeLabel() {
+        binding.scaleModeButton.text = getString(
+            when (binding.renderSurface.getScaleMode()) {
+                RenderSurfaceView.ScaleMode.FIT -> R.string.scale_mode_fit
+                RenderSurfaceView.ScaleMode.FILL -> R.string.scale_mode_fill
+            }
+        )
     }
 }

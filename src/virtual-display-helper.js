@@ -88,9 +88,47 @@ export async function ensureVirtualDisplayHelperBuilt() {
 export async function getCaptureBackendStatus() {
   const helpers = await ensureVirtualDisplayHelpersBuilt();
   return {
+    systemScreencapture: true,
     screenCaptureKit: Boolean(helpers.scCapture),
     coreGraphicsFallback: true,
     scCapturePath: helpers.scCapture
+  };
+}
+
+export function resolveScreenCaptureDisplayIndex(displays, displayId) {
+  if (!Array.isArray(displays)) {
+    return null;
+  }
+  const normalizedDisplayId = Number(displayId);
+  const index = displays.findIndex((display) => Number(display?.displayId) === normalizedDisplayId);
+  return index >= 0 ? index + 1 : null;
+}
+
+async function captureDisplayWithSystemScreencapture({
+  displayId,
+  output,
+  timeoutMs
+}) {
+  const displays = await listDisplays();
+  const displayIndex = resolveScreenCaptureDisplayIndex(displays, displayId);
+  if (!displayIndex) {
+    throw new Error(`display-capture failed (display ${displayId} not found for screencapture)`);
+  }
+  await execFileAsync("screencapture", [
+    "-x",
+    "-C",
+    `-D${displayIndex}`,
+    "-t",
+    "jpg",
+    output
+  ], {
+    timeout: timeoutMs,
+    killSignal: "SIGKILL"
+  });
+  return {
+    displayId,
+    output,
+    displayIndex
   };
 }
 
@@ -111,7 +149,7 @@ export async function captureDisplayToFile({
   output,
   quality = 0.75,
   timeoutMs = 900,
-  backend = "coreGraphics"
+  backend = "systemScreencapture"
 }) {
   const helpers = await ensureVirtualDisplayHelpersBuilt();
   const scArgs = [
@@ -119,9 +157,27 @@ export async function captureDisplayToFile({
     `--output=${output}`,
     `--quality=${quality}`
   ];
+  let systemCaptureError = null;
   let scCaptureError = null;
-  const allowScreenCaptureKit = !scCapturePermanentlyDisabled && (backend === "auto" || backend === "screenCaptureKit");
+  const allowSystemScreencapture = backend === "auto" || backend === "systemScreencapture";
+  const allowScreenCaptureKit = !scCapturePermanentlyDisabled && backend === "screenCaptureKit";
   const allowCoreGraphics = backend === "auto" || backend === "coreGraphics";
+
+  if (allowSystemScreencapture) {
+    try {
+      const systemStdout = await captureDisplayWithSystemScreencapture({
+        displayId,
+        output,
+        timeoutMs
+      });
+      return {
+        ...systemStdout,
+        backend: "systemScreencapture"
+      };
+    } catch (error) {
+      systemCaptureError = error;
+    }
+  }
 
   if (allowScreenCaptureKit && helpers.scCapture) {
     try {
@@ -144,7 +200,13 @@ export async function captureDisplayToFile({
     throw new Error("display-capture failed (screenCaptureKit helper unavailable)");
   }
 
+  if (backend === "systemScreencapture") {
+    if (systemCaptureError) throw systemCaptureError;
+    throw new Error("display-capture failed (system screencapture unavailable)");
+  }
+
   if (!allowCoreGraphics && !scCapturePermanentlyDisabled) {
+    if (systemCaptureError) throw systemCaptureError;
     if (scCaptureError) throw scCaptureError;
     throw new Error("display-capture failed (coreGraphics backend disabled)");
   }
@@ -164,6 +226,11 @@ export async function captureDisplayToFile({
       backend: "coreGraphics"
     };
   } catch (fallbackError) {
+    if (systemCaptureError) {
+      const systemReason = systemCaptureError instanceof Error ? systemCaptureError.message : String(systemCaptureError);
+      const fallbackReason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(`display-capture failed (system=${systemReason}; fallback=${fallbackReason})`);
+    }
     if (scCaptureError) {
       const scReason = scCaptureError instanceof Error ? scCaptureError.message : String(scCaptureError);
       const fallbackReason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -334,12 +401,18 @@ export async function createVirtualDisplaySession({
       }
 
       console.log(`[padlink] reusing verified display id=${reusable.displayId}`);
+      const mainDisplay = displays.find((d) => d.main) ?? null;
+      const mirrorSourceDisplayId = mirror ? (mainDisplay?.displayId ?? null) : null;
       return {
         displayId: reusable.displayId,
         width: reusable.width,
         height: reusable.height,
         refreshRate,
         name: `Reused Display ${reusable.displayId}`,
+        mirror,
+        mirrorSourceDisplayId,
+        captureDisplayId: mirrorSourceDisplayId ?? reusable.displayId,
+        inputDisplayId: mirrorSourceDisplayId ?? reusable.displayId,
         reused: true,
         close: async () => {}
       };

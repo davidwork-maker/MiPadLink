@@ -411,7 +411,10 @@ static int RunCreate(const std::vector<std::string> &args) {
     @"name": ToNSString(name),
     @"originX": @(originX),
     @"originY": @(originY),
-    @"mirror": @(mirror)
+    @"mirror": @(mirror),
+    @"mirrorSourceDisplayId": mirror ? @(mainDisplay) : [NSNull null],
+    @"captureDisplayId": mirror ? @(mainDisplay) : @(display.displayID),
+    @"inputDisplayId": mirror ? @(mainDisplay) : @(display.displayID)
   });
 
   signal(SIGINT, HandleSignal);

@@ -23,6 +23,23 @@ function normalizeCapturePreset(presetName, frameIntervalMs, displayCaptureQuali
   return "balanced";
 }
 
+export function resolveVirtualDisplayTargets(virtualDisplaySession) {
+  if (!virtualDisplaySession) {
+    return {
+      captureDisplayId: null,
+      inputDisplayId: null
+    };
+  }
+  return {
+    captureDisplayId: Number.isFinite(virtualDisplaySession.captureDisplayId)
+      ? virtualDisplaySession.captureDisplayId
+      : virtualDisplaySession.displayId,
+    inputDisplayId: Number.isFinite(virtualDisplaySession.inputDisplayId)
+      ? virtualDisplaySession.inputDisplayId
+      : virtualDisplaySession.displayId
+  };
+}
+
 function createLineDecoder(onLine) {
   let buffer = "";
   return (chunk) => {
@@ -225,7 +242,7 @@ export async function startHostServer({
   virtualDisplayHiDPI = true,
   virtualDisplayPpi = 110,
   displayCaptureQuality = 0.72,
-  captureBackend = "coreGraphics",
+  captureBackend = "systemScreencapture",
   capturePreset = "balanced",
   refreshRate = 60,
   logInput = false
@@ -289,8 +306,9 @@ export async function startHostServer({
         : createStaticFrameProvider();
       return;
     }
+    const { captureDisplayId } = resolveVirtualDisplayTargets(virtualDisplaySession);
     frameProviderController.current = createDisplayCaptureFrameProvider({
-      displayId: virtualDisplaySession.displayId,
+      displayId: captureDisplayId,
       quality: runtime.displayCaptureQuality,
       captureBackend: runtime.captureBackend
     });
@@ -415,14 +433,15 @@ export async function startHostServer({
     refreshFrameProvider();
     try {
       const backend = await getCaptureBackendStatus();
-      if (captureBackend === "coreGraphics") {
+      if (captureBackend === "systemScreencapture") {
+        console.log("[padlink] capture backend: system screencapture (forced)");
+      } else if (captureBackend === "coreGraphics") {
         console.log("[padlink] capture backend: CoreGraphics (forced)");
       } else if (captureBackend === "screenCaptureKit") {
         console.log("[padlink] capture backend: ScreenCaptureKit (forced)");
         console.warn("[padlink] ScreenCaptureKit one-shot mode may trigger repeated macOS privacy prompts; prefer CoreGraphics for day-to-day local use.");
-      } else if (backend.screenCaptureKit) {
-        console.log("[padlink] capture backend: ScreenCaptureKit (CoreGraphics fallback enabled)");
-        console.warn("[padlink] auto mode is experimental with ScreenCaptureKit one-shot capture; use --capture-backend=coreGraphics if macOS shows repeated privacy popups.");
+      } else if (backend.systemScreencapture) {
+        console.log("[padlink] capture backend: system screencapture (CoreGraphics fallback enabled)");
       } else {
         console.warn("[padlink] capture backend: CoreGraphics only (ScreenCaptureKit helper unavailable)");
       }
@@ -485,7 +504,7 @@ export async function startHostServer({
       },
       inputSink: virtualDisplaySession
         ? (message) => injectDisplayInput({
-          displayId: virtualDisplaySession.displayId,
+          displayId: resolveVirtualDisplayTargets(virtualDisplaySession).inputDisplayId,
           x: message.x,
           y: message.y,
           action: message.action ?? "tap"

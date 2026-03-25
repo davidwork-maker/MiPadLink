@@ -85,7 +85,7 @@ export function createDisplayCaptureFrameProvider({
   retryAfterMs = 1000,
   readFileFn = readFile,
   quality = 0.72,
-  captureBackend = "coreGraphics",
+  captureBackend = "systemScreencapture",
   captureDisplayFn = captureDisplayToFile
 } = {}) {
   let retryAt = 0;

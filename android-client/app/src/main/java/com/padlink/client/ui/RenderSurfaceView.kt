@@ -19,6 +19,11 @@ class RenderSurfaceView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
+    enum class ScaleMode {
+        FIT,
+        FILL
+    }
+
     private val backgroundPaint = Paint().apply {
         color = Color.parseColor("#101418")
     }
@@ -52,6 +57,7 @@ class RenderSurfaceView @JvmOverloads constructor(
     private var markerY = 0.5f
     private var markerUntilMs = 0L
     private var hudVisible = true
+    private var scaleMode = ScaleMode.FIT
 
     fun renderFrameSummary(summary: String) {
         decodeGeneration.incrementAndGet()
@@ -95,6 +101,13 @@ class RenderSurfaceView @JvmOverloads constructor(
         hudVisible = visible
         invalidate()
     }
+
+    fun setScaleMode(mode: ScaleMode) {
+        scaleMode = mode
+        invalidate()
+    }
+
+    fun getScaleMode(): ScaleMode = scaleMode
 
     fun mapTouchPointToNormalized(viewX: Float, viewY: Float): Pair<Float, Float>? {
         val rect = computeContentRect() ?: return null
@@ -171,7 +184,10 @@ class RenderSurfaceView @JvmOverloads constructor(
         val topOffset = if (hudVisible) 90f else 0f
         val targetWidth = width.toFloat()
         val targetHeight = (height - topOffset).coerceAtLeast(1f)
-        val scale = minOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
+        val scale = when (scaleMode) {
+            ScaleMode.FIT -> minOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
+            ScaleMode.FILL -> maxOf(targetWidth / sourceWidth, targetHeight / sourceHeight)
+        }
         val drawWidth = sourceWidth * scale
         val drawHeight = sourceHeight * scale
         val left = (targetWidth - drawWidth) / 2f

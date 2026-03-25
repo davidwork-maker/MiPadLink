@@ -1,10 +1,44 @@
 #!/usr/bin/env zsh
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
-ADB="/Users/davidwork/.local/android-sdk/platform-tools/adb"
 PORT=9009
 DASH_PORT=9010
+
+find_adb() {
+  local candidates=(
+    "${PADLINK_ADB:-}"
+    "/tmp/padlink-tools/platform-tools/adb"
+    "$HOME/.local/android-sdk/platform-tools/adb"
+    "$HOME/Library/Android/sdk/platform-tools/adb"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  if command -v adb >/dev/null 2>&1; then
+    command -v adb
+    return 0
+  fi
+  return 1
+}
+
+ensure_adb() {
+  if ADB="$(find_adb)"; then
+    return 0
+  fi
+  echo "[mipadlink] adb not found, downloading Android platform-tools..."
+  mkdir -p /tmp/padlink-tools
+  curl -L --fail --retry 2 -o /tmp/platform-tools-latest-darwin.zip \
+    "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+  unzip -oq /tmp/platform-tools-latest-darwin.zip -d /tmp/padlink-tools
+  ADB="/tmp/padlink-tools/platform-tools/adb"
+}
+
+ADB=""
 
 # --- Frame rate presets ---
 # Usage: ./start.sh [performance|balanced|battery] [mirror]
@@ -41,9 +75,9 @@ case "$PRESET" in
     ;;
   *)
     PRESET="balanced"
-    FRAME_INTERVAL=100
-    JPEG_QUALITY=0.72
-    echo "[mipadlink] preset: BALANCED (100ms, quality 0.72)"
+    FRAME_INTERVAL=80
+    JPEG_QUALITY=0.55
+    echo "[mipadlink] preset: BALANCED (80ms, quality 0.55)"
     ;;
 esac
 
@@ -62,6 +96,8 @@ fi
 
 # --- Check Pad connection ---
 echo "[mipadlink] checking Pad connection..."
+ensure_adb
+echo "[mipadlink] using adb: $ADB"
 if ! "$ADB" devices 2>/dev/null | grep -q "device$"; then
   echo "[mipadlink] WARNING: no Android device found. Server will start anyway."
   echo "[mipadlink]          Connect Pad via USB, then run: $ADB reverse tcp:$PORT tcp:$PORT"
@@ -89,4 +125,4 @@ exec node "$SCRIPT_DIR/src/cli.js" \
   --display-height=900 \
   --frame-interval-ms=$FRAME_INTERVAL \
   --jpeg-quality=$JPEG_QUALITY \
-  --capture-backend=coreGraphics
+  --capture-backend=systemScreencapture

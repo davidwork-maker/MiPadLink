@@ -47,7 +47,7 @@ adb reverse tcp:9009 tcp:9009
 # 2. Start host server
 node ./src/cli.js --host-server --host=127.0.0.1 --port=9009 \
   --virtual-display --display-width=1600 --display-height=900 \
-  --frame-interval-ms=100 --capture-backend=coreGraphics
+  --frame-interval-ms=80 --capture-backend=systemScreencapture
 
 # 3. Open MiPadLink on tablet → host: 127.0.0.1, port: 9009 → tap "连接 TCP"
 ```
@@ -56,4 +56,4 @@ node ./src/cli.js --host-server --host=127.0.0.1 --port=9009 \
 
 - **No display capture**: grant Screen Recording permission and restart terminal
 - **Touch not working**: grant Accessibility permission and restart terminal
-- **Repeated "unknown" popups**: ensure `--capture-backend=coreGraphics` (default)
+- **Repeated "unknown" popups**: stay on `--capture-backend=systemScreencapture` (default) and avoid forcing `screenCaptureKit`

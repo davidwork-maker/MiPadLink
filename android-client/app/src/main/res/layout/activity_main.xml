@@ -19,6 +19,16 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <Button
+        android:id="@+id/scaleModeButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="10dp"
+        android:minWidth="0dp"
+        android:text="@string/scale_mode_fit"
+        app:layout_constraintBaseline_toBaselineOf="@id/titleView"
+        app:layout_constraintEnd_toStartOf="@id/fullscreenButton" />
+
+    <Button
         android:id="@+id/fullscreenButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

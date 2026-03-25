@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHostConnectionHandler } from "./host-server.js";
+import { createHostConnectionHandler, resolveVirtualDisplayTargets } from "./host-server.js";
 
 test("host connection handler replies hello and sends frames after handshake", async () => {
   const sent = [];
@@ -87,4 +87,29 @@ test("host connection handler updates frame interval at runtime", () => {
   handler.updateFrameIntervalMs(60);
   assert.equal(handler.snapshot().frameIntervalMs, 60);
   handler.close("done");
+});
+
+test("resolveVirtualDisplayTargets uses mirror source ids when provided", () => {
+  assert.deepEqual(
+    resolveVirtualDisplayTargets({
+      displayId: 20,
+      captureDisplayId: 1,
+      inputDisplayId: 1,
+      mirror: true
+    }),
+    {
+      captureDisplayId: 1,
+      inputDisplayId: 1
+    }
+  );
+
+  assert.deepEqual(
+    resolveVirtualDisplayTargets({
+      displayId: 20
+    }),
+    {
+      captureDisplayId: 20,
+      inputDisplayId: 20
+    }
+  );
 });
