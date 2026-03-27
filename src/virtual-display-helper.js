@@ -44,7 +44,7 @@ function parseBuildOutput(stdout = "") {
   return result;
 }
 
-function existingHelperPaths() {
+export function getExistingHelperPaths() {
   const enableScreenCaptureKit = process.env.PADLINK_ENABLE_SC_CAPTURE === "1";
   return {
     virtualDisplay: existsSync(helperPath) ? helperPath : null,
@@ -59,7 +59,7 @@ export async function ensureVirtualDisplayHelpersBuilt() {
 
   const stdout = await execFileAsync(buildScriptPath);
   const parsed = parseBuildOutput(stdout);
-  const fallback = existingHelperPaths();
+  const fallback = getExistingHelperPaths();
   const enableScreenCaptureKit = process.env.PADLINK_ENABLE_SC_CAPTURE === "1";
   const resolved = {
     virtualDisplay: parsed.virtualDisplay && existsSync(parsed.virtualDisplay)
@@ -142,6 +142,22 @@ export async function checkAccessibilityPermission() {
   const binary = await ensureVirtualDisplayHelperBuilt();
   const stdout = await execFileAsync(binary, ["accessibility"]);
   return JSON.parse(stdout);
+}
+
+async function openSystemSettingsUrl(url) {
+  await execFileAsync("open", [url], {
+    timeout: 2_000,
+    killSignal: "SIGKILL"
+  });
+  return { ok: true, url };
+}
+
+export async function openAccessibilitySettings() {
+  return openSystemSettingsUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+}
+
+export async function openScreenRecordingSettings() {
+  return openSystemSettingsUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
 }
 
 export async function captureDisplayToFile({
@@ -414,7 +430,9 @@ export async function createVirtualDisplaySession({
         captureDisplayId: mirrorSourceDisplayId ?? reusable.displayId,
         inputDisplayId: mirrorSourceDisplayId ?? reusable.displayId,
         reused: true,
-        close: async () => {}
+        close: async () => {
+          await killStaleHelpers();
+        }
       };
     }
   }

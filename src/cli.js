@@ -2,6 +2,7 @@
 import { buildImplementationPlan, planToMarkdown } from "./solution-plan.js";
 import { runDemoSession } from "./simulation.js";
 import { runTcpDemo } from "./tcp-demo.js";
+import { collectDoctorReport, formatDoctorReport } from "./doctor.js";
 import { startHostServer } from "./host-server.js";
 
 function parseArgs(argv) {
@@ -16,6 +17,7 @@ function parseArgs(argv) {
   const refreshRateArg = argv.find((value) => value.startsWith("--refresh-rate="));
   const jpegQualityArg = argv.find((value) => value.startsWith("--jpeg-quality="));
   const captureBackendArg = argv.find((value) => value.startsWith("--capture-backend="));
+  const dashboardPortArg = argv.find((value) => value.startsWith("--dashboard-port="));
   const backendValue = captureBackendArg ? captureBackendArg.slice("--capture-backend=".length) : "systemScreencapture";
   const captureBackend = ["auto", "systemScreencapture", "screenCaptureKit", "coreGraphics"].includes(backendValue)
     ? backendValue
@@ -27,8 +29,11 @@ function parseArgs(argv) {
     demo: flags.has("--demo-session"),
     tcpDemo: flags.has("--tcp-demo"),
     hostServer: flags.has("--host-server"),
+    doctor: flags.has("--doctor"),
+    status: flags.has("--status"),
     port: portArg ? Number(portArg.slice("--port=".length)) : 9009,
     host: hostArg ? hostArg.slice("--host=".length) : "0.0.0.0",
+    dashboardPort: dashboardPortArg ? Number(dashboardPortArg.slice("--dashboard-port=".length)) : 9010,
     frameSource: frameSourceArg ? frameSourceArg.slice("--frame-source=".length) : "screen",
     frameIntervalMs: frameIntervalArg ? Number(frameIntervalArg.slice("--frame-interval-ms=".length)) : 80,
     virtualDisplay: flags.has("--virtual-display"),
@@ -49,6 +54,7 @@ async function main() {
     console.log(
       "Usage: padlink [--json] [--demo-session] [--tcp-demo] [--host-server] [--host=0.0.0.0] [--port=9009] [--frame-source=screen|mock] [--frame-interval-ms=80]"
       + " [--virtual-display] [--mirror-display] [--display-width=1600] [--display-height=900] [--display-name=PadLink Virtual Display] [--refresh-rate=60] [--jpeg-quality=0.72] [--capture-backend=systemScreencapture|coreGraphics|screenCaptureKit|auto] [--log-input]"
+      + " [--doctor] [--status] [--dashboard-port=9010]"
     );
     process.exit(0);
   }
@@ -61,6 +67,22 @@ async function main() {
   if (args.tcpDemo) {
     const result = await runTcpDemo({ frames: 3 });
     console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (args.doctor || args.status) {
+    const targetHost = args.host === "0.0.0.0" ? "127.0.0.1" : args.host;
+    const report = await collectDoctorReport({
+      host: targetHost,
+      port: args.port,
+      dashboardPort: args.dashboardPort,
+      buildHelpers: Boolean(args.doctor)
+    });
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+    console.log(formatDoctorReport(report, { compact: args.status && !args.doctor }));
     return;
   }
 

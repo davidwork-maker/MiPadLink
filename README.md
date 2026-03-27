@@ -32,6 +32,12 @@ MiPadLink creates a real macOS virtual display, streams frames to an Android tab
 - Streams preview frames to Android over TCP localhost
 - Sends touch input back to macOS
 - Includes a local dashboard for display mode switching, capture presets, and quick diagnostics
+- Includes a guided setup checklist in the dashboard so first-time users can see what is still missing
+- Adds a guided setup panel with context-aware recovery buttons such as rebuilding the virtual display
+- Adds an acceptance-test panel where you can mark pass/fail, keep notes, and copy a verification summary
+- The acceptance panel can also recommend the next test and move through cases one by one
+- The acceptance entry now lives near the top of the Mac dashboard so users do not need to hunt for it
+- The dashboard can also open the relevant macOS settings panes for permission recovery
 
 ## Current Status
 
@@ -40,6 +46,7 @@ MiPadLink is already usable for experimentation, demos, and light productivity, 
 What works well right now:
 
 - Wired host startup with `./start.sh`
+- `./start.sh stop | status | doctor` operational flow
 - macOS dashboard at `http://127.0.0.1:9010`
 - Extended display and mirror switching
 - Android fullscreen preview
@@ -105,20 +112,28 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ./start.sh
 ```
 
-What `./start.sh` does:
+What `./start.sh start` does:
 
 - locates or downloads `adb`
 - runs `adb reverse tcp:9009 tcp:9009`
 - starts the host server
-- opens the dashboard in the browser
+- opens the dashboard in the browser by default
+- auto-checks the USB / adb link again once the host is live
 
 Useful variants:
 
 ```bash
 ./start.sh
+./start.sh start
+./start.sh start balanced --no-open
 ./start.sh performance
 ./start.sh balanced mirror
+./start.sh status
+./start.sh doctor
+./start.sh stop
 npm run start:pad
+npm run status:pad
+npm run doctor:pad
 ```
 
 Dashboard:
@@ -128,6 +143,20 @@ Dashboard:
   - Extended / mirrored display switching
   - Capture presets
   - Virtual display rebuild
+  - Close virtual display
+  - Exit host service
+  - Live USB / adb status with one-click repair for `adb reverse`
+  - Refresh setup checks and see the next recommended action
+  - Guided setup steps with recovery actions
+  - Acceptance tests with pass/fail tracking and copyable summary
+  - Recommended next test with previous/next navigation
+
+Operational commands:
+
+- `./start.sh start [performance|balanced|battery] [mirror] [--no-open]`
+- `./start.sh status`
+- `./start.sh doctor`
+- `./start.sh stop`
 
 ### 5. Connect from the tablet
 

@@ -41,16 +41,20 @@ After granting permissions, restart your terminal.
 ## Quick Start
 
 ```bash
-# 1. USB port forwarding
-adb reverse tcp:9009 tcp:9009
+# 1. Optional: run a self-check before first use
+./start.sh doctor
 
-# 2. Start host server
-node ./src/cli.js --host-server --host=127.0.0.1 --port=9009 \
-  --virtual-display --display-width=1600 --display-height=900 \
-  --frame-interval-ms=80 --capture-backend=systemScreencapture
+# 2. Start MiPadLink
+./start.sh start
 
 # 3. Open MiPadLink on tablet → host: 127.0.0.1, port: 9009 → tap "连接 TCP"
 ```
+
+Useful day-to-day commands:
+
+- `./start.sh status` — print current host/dashboard/display status
+- `./start.sh stop` — stop the host and close any stale virtual display helper
+- `npm run doctor:pad` — same self-check through npm
 
 ## Troubleshooting
 

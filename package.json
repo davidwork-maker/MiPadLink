@@ -10,6 +10,9 @@
     "test": "node --test",
     "start": "node ./src/cli.js",
     "start:host": "node ./src/cli.js --host-server --host=0.0.0.0 --port=9009",
-    "start:pad": "./start.sh"
+    "start:pad": "./start.sh start",
+    "stop:pad": "./start.sh stop",
+    "status:pad": "./start.sh status",
+    "doctor:pad": "./start.sh doctor"
   }
 }

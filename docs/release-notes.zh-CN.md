@@ -12,7 +12,12 @@
 
 - 仓库文档整理成更适合公开展示的中英双版本
 - 一键启动脚本更完整
+- 日常操作命令补齐为 `start / stop / status / doctor`
 - dashboard 支持更清晰的显示模式和采集档位控制
+- dashboard 增加首次运行检查和“下一步建议”
+- dashboard 再加一层连接向导，会根据当前状态给恢复动作
+- dashboard 新增验收测试面板，可记录通过/失败并复制测试摘要
+- dashboard 新增 USB / adb 状态卡，可一键修复 `adb reverse`
 - 默认抓屏路径切到 macOS `screencapture`
 - 安卓端新增 `完整显示 / 铺满裁切`
 - 进一步收口虚拟显示器生命周期和触控/显示映射
@@ -20,6 +25,9 @@
 ## 用户可见变化
 
 - `./start.sh` 现在会处理 `adb reverse`、host 启动和 dashboard 打开
+- `./start.sh status` 和 `./start.sh doctor` 可以直接查看当前状态与本机自检
+- `./start.sh stop` 会优先优雅退出，再清理遗留虚拟屏 helper
+- `./start.sh start --no-open` 可以安静启动，不主动弹浏览器
 - 安卓客户端新增：
   - `完整显示`
   - `铺满裁切`
